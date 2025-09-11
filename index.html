@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Portal Kuis & Ujian - Cendekia Aksara</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap');
+        :root { --primary-color: #003366; --secondary-color: #005a9c; --accent-color: #f0f4f8; --green-color: #28a745; }
+        body { font-family: 'Poppins', sans-serif; background-color: var(--accent-color); margin: 0; padding: 20px; }
+        .container { max-width: 800px; margin: 20px auto; background-color: #fff; padding: 30px; border-radius: 12px; box-shadow: 0 8px 30px rgba(0,0,0,0.1); }
+        h1, h2, h3 { color: var(--primary-color); text-align: center; }
+        .hidden { display: none !important; }
+        .btn { display: inline-block; padding: 12px 25px; border: none; border-radius: 8px; color: #fff; font-weight: 600; cursor: pointer; text-decoration: none; transition: all 0.3s ease; }
+        .btn-primary { background-color: var(--secondary-color); }
+        .btn-green { background-color: var(--green-color); }
+        .form-group { margin-bottom: 20px; text-align: left; }
+        .form-group label { display: block; font-weight: 600; margin-bottom: 8px; }
+        .form-group input, .form-group select, .form-group textarea { width: 100%; padding: 12px; border: 1px solid #ccc; border-radius: 8px; box-sizing: border-box; }
+        .question-builder { border: 1px dashed #ccc; padding: 15px; border-radius: 8px; margin-bottom: 15px; }
+        .quiz-card { background-color: #f9f9f9; border-left: 5px solid var(--secondary-color); padding: 15px; border-radius: 8px; margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; }
+        .quiz-card:hover { background-color: #eef; }
+        .result-display { text-align: center; }
+        .result-display .score { font-size: 4em; font-weight: bold; color: var(--green-color); }
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        .back-btn, .logout-btn { background: none; border: none; color: var(--secondary-color); font-weight: 600; cursor: pointer; padding: 0; font-size: 1em; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div id="login-view" class="view">
+            <h1>Portal Kuis & Ujian</h1>
+            <p>Silakan masuk dengan username dan password Anda.</p>
+            <form id="login-form">
+                <div class="form-group"><label for="username">Username</label><input type="text" id="username" required></div>
+                <div class="form-group"><label for="password">Password</label><input type="password" id="password" required></div>
+                <button type="submit" class="btn btn-primary" style="width:100%;">Login</button>
+                <p id="login-error" style="color:red; font-size: 0.9em; margin-top: 15px;" class="hidden"></p>
+            </form>
+        </div>
+
+        <div id="pengajar-view" class="view hidden">
+            <div class="header">
+                <h2>Buat Kuis / Ujian Baru</h2>
+                <button class="logout-btn">Logout →</button>
+            </div>
+            <form id="quiz-builder-form">
+                <div class="form-group"><label for="quiz-title">Judul</label><input id="quiz-title" required></div>
+                <div class="form-group">
+                    <label for="quiz-type">Tipe</label>
+                    <select id="quiz-type" required><option value="Kuis">Kuis</option><option value="Ujian">Ujian</option><option value="Tugas Akhir">Tugas Akhir</option></select>
+                </div>
+                <hr>
+                <div id="questions-container"></div>
+                <button type="button" id="add-question-btn" class="btn btn-secondary" style="background-color: #6c757d;">Tambah Pertanyaan</button>
+                <button type="submit" class="btn btn-green" style="width:100%; margin-top:20px;">Simpan & Terbitkan</button>
+            </form>
+        </div>
+
+        <div id="siswa-view" class="view hidden">
+            <div class="header">
+                <h2>Daftar Kuis & Ujian</h2>
+                <button class="logout-btn">Logout →</button>
+            </div>
+            <div id="quiz-list"></div>
+        </div>
+
+        <div id="quiz-taking-view" class="view hidden">
+             <div class="header">
+                <h2 id="quiz-taking-title"></h2>
+                <button class="back-btn" data-target="siswa-view">← Kembali ke Daftar</button>
+             </div>
+             <form id="quiz-taking-form"></form>
+        </div>
+        
+        <div id="quiz-result-view" class="view hidden">
+            <h2>Hasil Anda</h2>
+            <div class="result-display">
+                <p>Anda berhasil menjawab:</p>
+                <span id="result-correct">0</span> dari <span id="result-total">0</span> soal
+                <p>Nilai Akhir:</p>
+                <div id="result-score" class="score">0</div>
+            </div>
+            <button class="back-btn" data-target="siswa-view" style="width:100%; text-align:center; margin-top:20px;">Selesai</button>
+        </div>
+    </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    // --- PENTING: GANTI DENGAN URL WEB APP DARI SHEET KUIS & UJIAN ---
+    const WEB_APP_URL_KUIS = 'https://script.google.com/macros/s/AKfycbzyNlMw_b5Kpqwbfceexxw-nUntnHRMzPq6l0k5WyyJHYGhfpO_nYDw07cZfXImZrKTtA/exec';
+    // --- PENTING: GANTI DENGAN URL WEB APP DARI SHEET PENGGUNA & MATERI ---
+    const WEB_APP_URL_PENGGUNA = 'https://script.google.com/macros/s/AKfycbwhcX2djYYGYgkhvOrbi8fxMn-C1yLlmASW1VgPVwT1yDviviXBrkxqNfGKGVgr4rWQ/exec';
+
+    let currentUser = {};
+
+    function updateView(targetId) {
+        document.querySelectorAll('.view').forEach(v => v.classList.add('hidden'));
+        document.getElementById(targetId).classList.remove('hidden');
+    }
+
+    // --- LOGIKA LOGIN TERPADU ---
+    document.getElementById('login-form').onsubmit = (e) => {
+        e.preventDefault();
+        const username = document.getElementById('username').value;
+        const password = document.getElementById('password').value;
+        const btn = e.target.querySelector('button');
+        const errorEl = document.getElementById('login-error');
+        errorEl.classList.add('hidden'); btn.textContent = "Mencoba Masuk..."; btn.disabled = true;
+
+        const formData = new FormData();
+        formData.append('username', username);
+        formData.append('password', password);
+
+        fetch(`${WEB_APP_URL_PENGGUNA}?action=login`, { method: 'POST', body: formData })
+        .then(res => res.json()).then(data => {
+            if (data.status === 'success') {
+                currentUser = { name: data.name, role: data.role.trim().toLowerCase() };
+                if (currentUser.role === 'pengajar') {
+                    renderPengajarView();
+                } else {
+                    renderSiswaView();
+                }
+            } else { errorEl.textContent = data.message; errorEl.classList.remove('hidden'); }
+        }).catch(err => { console.error(err); errorEl.textContent = "Terjadi kesalahan jaringan."; errorEl.classList.remove('hidden');})
+        .finally(() => { btn.textContent = "Login"; btn.disabled = false; });
+    };
+
+    // --- LOGIKA PENGAJAR ---
+    function renderPengajarView() {
+        document.getElementById('questions-container').innerHTML = '';
+        document.getElementById('quiz-builder-form').reset();
+        questionCount = 0;
+        document.getElementById('add-question-btn').click();
+        updateView('pengajar-view');
+    }
+
+    let questionCount = 0;
+    document.getElementById('add-question-btn').onclick = () => {
+        questionCount++;
+        const qDiv = document.createElement('div');
+        qDiv.className = 'question-builder';
+        qDiv.innerHTML = `<h4>Pertanyaan ${questionCount}</h4><div class="form-group"><label>Teks Pertanyaan</label><textarea class="question-text" rows="2" required></textarea></div><div class="form-group"><label>Pilihan A</label><input class="option-a" required></div><div class="form-group"><label>Pilihan B</label><input class="option-b" required></div><div class="form-group"><label>Pilihan C</label><input class="option-c" required></div><div class="form-group"><label>Pilihan D</label><input class="option-d" required></div><div class="form-group"><label>Kunci Jawaban</label><select class="correct-answer" required><option>A</option><option>B</option><option>C</option><option>D</option></select></div>`;
+        document.getElementById('questions-container').appendChild(qDiv);
+    };
+
+    document.getElementById('quiz-builder-form').onsubmit = (e) => {
+        e.preventDefault();
+        const btn = e.target.querySelector('button[type="submit"]');
+        btn.textContent = 'Menyimpan...'; btn.disabled = true;
+        const questions = [];
+        document.querySelectorAll('.question-builder').forEach(q => {
+            questions.push({ Pertanyaan: q.querySelector('.question-text').value, PilihanA: q.querySelector('.option-a').value, PilihanB: q.querySelector('.option-b').value, PilihanC: q.querySelector('.option-c').value, PilihanD: q.querySelector('.option-d').value, KunciJawaban: q.querySelector('.correct-answer').value });
+        });
+        const payload = { JudulKuis: document.getElementById('quiz-title').value, Tipe: document.getElementById('quiz-type').value, NamaPengajar: currentUser.name, questions: questions };
+        fetch(`${WEB_APP_URL_KUIS}?action=addQuiz`, { method: 'POST', body: JSON.stringify(payload) })
+        .then(res => res.json()).then(data => {
+            if(data.status === 'success') { alert('Kuis berhasil disimpan!'); renderPengajarView(); } 
+            else { alert('Gagal menyimpan.'); }
+        }).catch(err => console.error(err)).finally(() => { btn.textContent = 'Simpan & Terbitkan'; btn.disabled = false; });
+    };
+
+    // --- LOGIKA SISWA ---
+    const quizListDiv = document.getElementById('quiz-list');
+    async function renderSiswaView() {
+        updateView('siswa-view');
+        quizListDiv.innerHTML = '<p>Mengecek data...</p>';
+
+        const [quizzes, results] = await Promise.all([
+            fetch(`${WEB_APP_URL_KUIS}?action=getQuizList`).then(res => res.json()),
+            fetch(`${WEB_APP_URL_KUIS}?action=getResults&username=${currentUser.name}`).then(res => res.json())
+        ]);
+        
+        quizListDiv.innerHTML = '';
+        if (quizzes.length === 0) {
+            quizListDiv.innerHTML = '<p>Belum ada kuis atau ujian yang tersedia saat ini.</p>';
+            return;
+        }
+        quizzes.reverse().forEach(quiz => {
+            const hasTaken = results[quiz.IDKuis];
+            const card = document.createElement('div');
+            card.className = 'quiz-card';
+            card.innerHTML = `<div><h3>${quiz.JudulKuis} (${quiz.Tipe})</h3><p>Oleh: ${quiz.NamaPengajar}</p></div><span style="font-weight:bold; color:${hasTaken ? 'var(--green-color)' : 'var(--secondary-color)'}">${hasTaken ? `Nilai: ${results[quiz.IDKuis].Nilai}` : 'Kerjakan'}</span>`;
+            if (!hasTaken) card.onclick = () => startQuiz(quiz);
+            quizListDiv.appendChild(card);
+        });
+    }
+
+    async function startQuiz(quiz) {
+        document.getElementById('quiz-taking-title').textContent = quiz.JudulKuis;
+        const form = document.getElementById('quiz-taking-form');
+        form.innerHTML = '<p>Memuat soal...</p>';
+        updateView('quiz-taking-view');
+
+        const questions = await fetch(`${WEB_APP_URL_KUIS}?action=getQuizQuestions&id=${quiz.IDKuis}`).then(res => res.json());
+        form.innerHTML = '';
+        questions.forEach((q, index) => {
+            const fieldset = document.createElement('fieldset');
+            fieldset.style.border = '1px solid #ccc'; fieldset.style.marginBottom = '15px';
+            fieldset.innerHTML = `<legend><b>Pertanyaan ${index + 1}</b>: ${q.Pertanyaan}</legend><div class="form-group"><label><input type="radio" name="${q.IDSoal}" value="A" required> A. ${q.PilihanA}</label><br><label><input type="radio" name="${q.IDSoal}" value="B"> B. ${q.PilihanB}</label><br><label><input type="radio" name="${q.IDSoal}" value="C"> C. ${q.PilihanC}</label><br><label><input type="radio" name="${q.IDSoal}" value="D"> D. ${q.PilihanD}</label></div>`;
+            form.appendChild(fieldset);
+        });
+        form.innerHTML += '<button type="submit" class="btn btn-green" style="width:100%;">Selesaikan Kuis</button>';
+
+        form.onsubmit = (e) => {
+            e.preventDefault();
+            const btn = e.target.querySelector('button[type="submit"]');
+            btn.textContent = 'Menilai...'; btn.disabled = true;
+            const answers = {};
+            new FormData(form).forEach((value, key) => answers[key] = value);
+            const payload = { UsernameSiswa: currentUser.name, IDKuis: quiz.IDKuis, JudulKuis: quiz.JudulKuis, answers: answers };
+            fetch(`${WEB_APP_URL_KUIS}?action=submitQuiz`, { method: 'POST', body: JSON.stringify(payload) })
+            .then(res => res.json()).then(data => {
+                if (data.status === 'success') {
+                    document.getElementById('result-correct').textContent = data.score;
+                    document.getElementById('result-total').textContent = data.total;
+                    document.getElementById('result-score').textContent = data.finalScore;
+                    updateView('quiz-result-view');
+                }
+            }).catch(err => console.error(err));
+        };
+    }
+
+    // --- LOGIKA TOMBOL KEMBALI & LOGOUT ---
+    document.querySelectorAll('.back-btn').forEach(b => b.onclick = () => renderSiswaView());
+    document.querySelectorAll('.logout-btn').forEach(b => b.onclick = () => location.reload());
+});
+</script>
+</body>
+</html>
