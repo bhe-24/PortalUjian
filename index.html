@@ -9,6 +9,8 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-storage.js"></script>
+    <!-- --- LIBRARY PDF (NATIVE) --- -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap');
         @import url('https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css');
@@ -189,6 +191,20 @@
             z-index: 10;
         }
         
+        /* --- CSS BARU UNTUK PERINGATAN --- */
+        .nav-btn.unanswered-warning {
+            background-color: var(--danger-color);
+            color: white;
+            border-color: var(--danger-color);
+            animation: pulse 0.5s 3; /* Animasi berdenyut 3x */
+        }
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+            100% { transform: scale(1); }
+        }
+        /* --- AKHIR CSS BARU --- */
+
         .ujian-header-bar {
             display: flex;
             justify-content: space-between;
@@ -236,6 +252,44 @@
             background-color: #d98c3f;
         }
         /* === Akhir Gaya Navigasi Ujian Baru === */
+
+        /* === Gaya Halaman Review Baru === */
+        #review-content-for-pdf { padding: 15px; border: 1px solid #eee; }
+        .review-question {
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid var(--light-gray);
+        }
+        .review-question h4 {
+            color: var(--secondary-color);
+            text-align: left;
+            margin-bottom: 10px;
+        }
+        .review-option {
+            display: block;
+            padding: 12px;
+            border: 2px solid var(--light-gray);
+            border-radius: 8px;
+            margin-bottom: 8px;
+            background-color: #fdfdfd;
+        }
+        .review-option.correct-answer {
+            /* Jawaban yang benar */
+            background-color: #e6f7ec;
+            border-color: var(--success-color);
+            font-weight: 600;
+        }
+        .review-option.wrong-answer {
+            /* Jawaban siswa yang salah */
+            background-color: #fdeeee;
+            border-color: var(--danger-color);
+            text-decoration: line-through;
+        }
+        .review-option-prefix {
+            font-weight: bold;
+            margin-right: 10px;
+        }
+        /* === Akhir Gaya Review === */
 
 
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
@@ -349,6 +403,11 @@
          <!-- Konten sesi ujian akan dirender oleh JavaScript di sini -->
         </div>
         
+        <!-- --- VIEW BARU UNTUK REVIEW KUIS --- -->
+        <div id="ujian-review-view" class="view hidden">
+            <!-- Konten review akan dirender oleh JavaScript di sini -->
+        </div>
+        
         <!-- =================================== -->
         <!-- ====== HALAMAN KHUSUS ADMIN ======= -->
         <!-- =================================== -->
@@ -374,6 +433,13 @@
                 <div class="form-group"><label for="ujian-title">Judul</label><input type="text" id="ujian-title" required></div>
                 <div class="form-group"><label for="ujian-subject">Mata Pelajaran</label><input type="text" id="ujian-subject" required></div>
                 <div class="form-group"><label for="ujian-duration">Durasi (menit)</label><input type="number" id="ujian-duration" required></div>
+
+                <!-- --- DEADLINE BARU --- -->
+                <div class="form-group">
+                    <label for="ujian-deadline">Batas Waktu (Opsional)</label>
+                    <input type="datetime-local" id="ujian-deadline">
+                </div>
+                <!-- --- AKHIR DEADLINE --- -->
 
                 <!-- --- PERUBAHAN: Tab Switcher --- -->
                 <div class="tab-switcher" style="display: flex; gap: 5px; margin-top: 20px; border-bottom: 1px solid var(--light-gray);">
@@ -610,15 +676,59 @@ document.addEventListener('DOMContentLoaded', () => {
                 items.forEach(item => {
                     const card = document.createElement('div');
                     const submission = quizSubmissions[item.id];
-                    card.className = 'item-card clickable';
+                    // card.className = 'item-card clickable'; // <-- Logika lama
+                    card.className = 'item-card'; // Atur clickable nanti
+
+                    // --- LOGIKA DEADLINE BARU ---
+                    let statusHTML = '';
+                    let cardActionsHTML = '';
+                    let isSealed = false;
+                    const hasDeadline = item.deadline && item.deadline !== "";
+                    const deadlinePassed = hasDeadline && new Date() > new Date(item.deadline);
+
+                    if (submission) {
+                        card.className += ' clickable';
+                        statusHTML = `<span class="tag tag-blue">Selesai (Skor: ${submission.score})</span>`;
+                        cardActionsHTML = `<button class="btn btn-secondary btn-sm" data-id="${item.id}" data-action="review">Lihat Hasil</button>`;
+                    } else if (deadlinePassed) {
+                        isSealed = true;
+                        statusHTML = `<span class="tag tag-red">Ditutup</span>`;
+                        cardActionsHTML = `<button class="btn btn-secondary btn-sm" disabled>Batas Waktu Habis</button>`;
+                    } else {
+                        card.className += ' clickable';
+                        statusHTML = `<span class="tag tag-green">Tersedia</span>`;
+                        cardActionsHTML = `<button class="btn btn-success btn-sm" data-id="${item.id}" data-action="start">Mulai Ujian</button>`;
+                    }
+                    
+                    const deadlineText = hasDeadline ? `<p><strong>Batas Waktu:</strong> ${new Date(item.deadline).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' })}</p>` : '<p>Tidak ada batas waktu.</p>';
+                    // --- AKHIR LOGIKA DEADLINE ---
 
                     if (submission) {
                         card.innerHTML = `<i class="fa-solid fa-check-circle submitted-icon"></i><h3>${item.title}</h3><p>${item.subject}</p><p><strong>Skor Anda: ${submission.score}</strong></p>`;
-                        card.onclick = () => showModal(`Hasil ${item.type}`, `<div class="submission-success-view" style="padding: 20px 0; border: none;"><h3>Skor Anda untuk ${item.title} adalah:</h3><div class="timer-display">${submission.score}</div></div>`);
+                        // --- PERUBAHAN: Arahkan ke Halaman Review PDF ---
+                        card.onclick = () => showUjianReview(submission.data, submission.score, true);
                     } else {
-                        card.innerHTML = `<h3>${item.title}</h3><p>${item.subject}</p><p>Jumlah Soal: ${item.questions.length}</p>`;
-                        // card.onclick = () => startUjian(item); // <-- BARIS LAMA
-                        card.onclick = () => showUjianConfirmation(item); // <-- BARIS BARU
+                        // card.innerHTML = `<h3>${item.title}</h3><p>${item.subject}</p><p>Jumlah Soal: ${item.questions.length}</p>`;
+                        // card.onclick = () => showUjianConfirmation(item); // <-- BARIS LAMA
+                        
+                        // --- TAMPILAN KARTU BARU DENGAN DEADLINE ---
+                        card.innerHTML = `
+                            <div class="card-header">
+                                <h3 style="${isSealed ? 'color: var(--gray-color);' : ''}">${item.title}</h3>
+                                ${statusHTML}
+                            </div>
+                            <p>${item.subject}</p>
+                            <p>Jumlah Soal: ${item.questions.length}</p>
+                            ${deadlineText}
+                            <div class="card-actions" style="margin-top: 15px;">
+                                ${cardActionsHTML}
+                            </div>
+                        `;
+                        
+                        if (!isSealed) {
+                            card.querySelector('button[data-action="start"]').onclick = () => showUjianConfirmation(item);
+                        }
+                        // --- AKHIR TAMPILAN KARTU BARU ---
                     }
                     listDiv.appendChild(card);
                 });
@@ -840,34 +950,59 @@ document.addEventListener('DOMContentLoaded', () => {
         const prevBtn = navigationContainer.querySelector('#prev-question-btn');
         const nextBtn = navigationContainer.querySelector('#next-question-btn');
         const flagBtn = navigationContainer.querySelector('#flag-question-btn');
-
-        // --- HAPUS LISTENER TOMBOL KELUAR (Sudah permanen) ---
-        // document.getElementById('exit-ujian-btn').onclick = async () => { ... };
-        // ----------------------------------------------------
-
+        
+        // --- KODE YANG HILANG (DITAMBAHKAN KEMBALI) ---
         prevBtn.disabled = currentQuestionIndex === 0;
         prevBtn.onclick = () => { 
             currentUjianSession.currentQuestionIndex--; 
             renderCurrentUjianQuestion(); 
         };
-
-        if (isLastQuestion) {
-            nextBtn.onclick = () => finishUjian(false); // Kirim 'false' (bukan force submit)
-        } else {
+        
+        if (isLastQuestion) { 
+            // Jika ini soal terakhir, tombol "Next" menjadi "Selesaikan"
+            nextBtn.onclick = () => finishUjian(false); // false = bukan force submit
+        } else { 
+            // Jika bukan soal terakhir
             nextBtn.onclick = () => { 
                 currentUjianSession.currentQuestionIndex++; 
                 renderCurrentUjianQuestion(); 
-            };
+            }; 
         }
-
+        
         flagBtn.onclick = () => {
             currentUjianSession.flagged[currentQuestionIndex] = !currentUjianSession.flagged[currentQuestionIndex];
-            // Hapus jawaban jika ditandai ragu <-- DIHAPUS
-            // if (currentUjianSession.flagged[currentQuestionIndex]) {
-            //     currentUjianSession.answers[currentQuestionIndex] = null;
-            // }
-            renderCurrentUjianQuestion(); // Render ulang untuk update tombol
+            renderCurrentUjianQuestion(); // Render ulang untuk ubah teks tombol & navigasi
         };
+        // --- AKHIR KODE YANG HILANG ---
+
+        // ... akhir dari renderCurrentUjianQuestion() ...
+        // <-- BARIS 770 YANG BERISI '};' SUDAH DIHAPUS
+    }
+
+    // --- FUNGSI BARU UNTUK HIGHLIGHT SOAL KOSONG ---
+    function highlightUnansweredQuestions() {
+        const navGridContainer = document.getElementById('ujian-nav-grid-container');
+        if (!navGridContainer) return;
+
+        currentUjianSession.answers.forEach((answer, index) => {
+            if (answer === null) {
+                const btn = navGridContainer.querySelector(`.nav-btn[data-index="${index}"]`);
+                if (btn) {
+                    // Hapus kelas 'unanswered-warning' lama jika ada (untuk reset animasi)
+                    btn.classList.remove('unanswered-warning');
+                    // Tambahkan kelas lagi untuk memicu animasi
+                    void btn.offsetWidth; // Paksa browser reflow
+                    btn.classList.add('unanswered-warning');
+                }
+            }
+        });
+        
+        // Hapus highlight setelah animasi selesai (3x * 0.5s = 1.5s)
+        setTimeout(() => {
+            navGridContainer.querySelectorAll('.unanswered-warning').forEach(btn => {
+                btn.classList.remove('unanswered-warning');
+            });
+        }, 1500);
     }
     
     function startTimer(durationMinutes) {
@@ -894,7 +1029,22 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     async function finishUjian(forceSubmit = false) {
-        // Cek apakah ada soal yang ditandai 'Ragu'
+        // --- PENGECEKAN BARU: Apakah semua soal sudah dijawab? ---
+        const unansweredCount = currentUjianSession.answers.filter(ans => ans === null).length;
+
+        if (unansweredCount > 0 && !forceSubmit) {
+            // Peringatan: Tidak boleh selesai jika ada yang kosong
+            showModal(
+                'Ujian Belum Selesai', 
+                `Anda masih memiliki <strong>${unansweredCount} soal</strong> yang belum dijawab.<br><br>Silakan selesaikan semua soal terlebih dahulu.`
+            );
+            // Panggil fungsi untuk highlight soal yang kosong
+            highlightUnansweredQuestions();
+            return; // Hentikan fungsi
+        }
+        // --- AKHIR PENGECEKAN BARU ---
+        
+        // Cek apakah ada soal yang ditandai 'Ragu' (Logika lama tetap ada)
         const flaggedCount = currentUjianSession.flagged.filter(Boolean).length;
         
         if (flaggedCount > 0 && !forceSubmit) {
@@ -916,16 +1066,267 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const payload = {
             studentUid: currentUserData.uid, studentName: currentUserData.name, quizId: currentUjianSession.data.id, quizTitle: currentUjianSession.data.title,
-            type: currentUjianSession.data.type, answers: currentUjianSession.answers, score: finalScore, submittedAt: firebase.firestore.FieldValue.serverTimestamp()
+            type: currentUjianSession.data.type, answers: currentUjianSession.answers, score: finalScore, submittedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            // --- SIMPAN SOAL UNTUK REVIEW ---
+            data: currentUjianSession.data
         };
         try {
             // Kita tetap menggunakan collection 'quiz_submissions' agar konsisten
             await db.collection('quiz_submissions').add(payload);
-            const sessionView = document.getElementById('ujian-session-view');
-            sessionView.innerHTML = `<div class="submission-success-view"><i class="fa-solid fa-award"></i><h3>${currentUjianSession.data.type} Selesai!</h3><p>Skor Anda:</p><div class="timer-display">${finalScore}</div><button class="btn back-to-dashboard-after-quiz" style="width: auto;">Kembali ke Dasbor</button></div>`;
-            sessionView.querySelector('.back-to-dashboard-after-quiz').onclick = renderDashboardView;
+            
+            // --- PERUBAHAN: Panggil Halaman Review ---
+            // const sessionView = document.getElementById('ujian-session-view');
+            // sessionView.innerHTML = `<div class="submission-success-view">...</div>`;
+            // sessionView.querySelector('.back-to-dashboard-after-quiz').onclick = renderDashboardView;
+            showUjianReview(currentUjianSession, finalScore, false); // Panggil review
+            // --- AKHIR PERUBAHAN ---
+
         } catch(err) { showModal('Error', 'Gagal menyimpan hasil Anda.'); }
         finally { hideLoading(); }
+    }
+
+
+    // --- FUNGSI BARU: Tampilkan Halaman Review Kuis ---
+    function showUjianReview(sessionOrSubmission, score, isFromHistory) {
+        updateView('ujian-review-view');
+        const reviewView = document.getElementById('ujian-review-view');
+        
+        // Tentukan data sesi dari mana asalnya
+        const sessionData = isFromHistory ? sessionOrSubmission : sessionOrSubmission.data;
+        const answers = isFromHistory ? sessionOrSubmission.answers : sessionOrSubmission.answers;
+
+        let reviewHTML = `
+            <div class="submission-success-view" style="padding: 20px 0; border: none;">
+                <h3>${sessionData.type} Selesai!</h3>
+                <p>Skor Anda:</p>
+                <div class="timer-display">${score}</div>
+            </div>
+            
+            <hr style="margin: 20px 0;">
+            <h2 style="text-align:left; margin-bottom: 15px;">Review Jawaban</h2>
+            <p style="text-align:left; margin-bottom: 20px;">Silakan unduh hasil review ini sebagai bahan belajar Anda.</p>
+
+            <div id="review-content-for-web"> <!-- Wrapper untuk tampilan web -->
+        `;
+        
+        // Iterasi setiap soal untuk review
+        sessionData.questions.forEach((q, index) => {
+            const userAnswerIndex = answers[index];
+            const correctAnswerIndex = parseInt(q.correctAnswerIndex);
+
+            reviewHTML += `<div class="review-question"><h4>${index + 1}. ${q.questionText}</h4>`;
+            
+            q.options.forEach((optionText, optIndex) => {
+                const prefix = String.fromCharCode(97 + optIndex);
+                let optionClass = 'review-option';
+                
+                if (optIndex === correctAnswerIndex) {
+                    optionClass += ' correct-answer';
+                } else if (optIndex === userAnswerIndex && userAnswerIndex !== correctAnswerIndex) {
+                    optionClass += ' wrong-answer';
+                }
+
+                reviewHTML += `
+                    <div class="${optionClass}">
+                        <span class="review-option-prefix">${prefix}.</span>
+                        <span>${optionText}</span>
+                    </div>
+                `;
+            });
+
+            reviewHTML += `</div>`;
+        });
+        
+        reviewHTML += `</div> <!-- Akhir #review-content-for-web -->`;
+        
+        // Tombol Aksi
+        reviewHTML += `
+            <div style="margin-top: 30px; text-align: center;">
+                <button id="download-pdf-btn" class="btn btn-success" style="width: auto;">
+                    <i class="fa-solid fa-file-pdf"></i> Unduh Hasil (PDF)
+                </button>
+                <button id="back-to-dashboard-from-review" class="btn btn-secondary hidden" style="width: auto; margin-top: 10px;">
+                    Kembali ke Dasbor
+                </button>
+            </div>
+        `;
+
+        reviewView.innerHTML = reviewHTML;
+
+        // Pasang listener
+        document.getElementById('download-pdf-btn').onclick = () => generateReviewPDF(sessionData, answers, score);
+        document.getElementById('back-to-dashboard-from-review').onclick = renderDashboardView;
+    }
+
+    // --- FUNGSI PDF NATIVE (BUKAN SCREENSHOT) ---
+    async function generateReviewPDF(sessionData, answers, score) {
+        showLoading('Membuat PDF Teks (Native)...');
+        
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF('p', 'mm', 'a4'); // portrait, milimeter, A4
+        
+        // URL Logo (Harus bisa diakses via CORS)
+        const logoCendekiaUrl = 'https://i.imgur.com/5Srjyo4.png';
+        const logoCapBasahUrl = 'https://i.imgur.com/YvrNYRw.png';
+        
+        // --- Helper ---
+        const pageWidth = doc.internal.pageSize.getWidth();
+        const pageHeight = doc.internal.pageSize.getHeight();
+        const margin = 15;
+        const contentWidth = pageWidth - (margin * 2);
+        let y = margin; // Posisi Y vertikal saat ini
+
+        function checkPageBreak(requiredHeight = 10) {
+            if (y + requiredHeight > pageHeight - margin) {
+                doc.addPage();
+                y = margin;
+            }
+        }
+        // --- Akhir Helper ---
+
+        try {
+            // --- Halaman 1: Judul, Logo, dan Info ---
+            try {
+                doc.addImage(logoCendekiaUrl, 'PNG', margin, y, 25, 25);
+            } catch (e) { console.warn("Gagal memuat logo Cendekia."); }
+            
+            doc.setFontSize(18);
+            doc.setFont('helvetica', 'bold');
+            doc.setTextColor("#003366"); // Biru Tua
+            doc.text(`HASIL REVIEW ${sessionData.type.toUpperCase()}`, pageWidth / 2, y + 10, { align: 'center' });
+            doc.text('Cendekia Aksara', pageWidth / 2, y + 18, { align: 'center' });
+            y += 35; 
+
+            doc.setFontSize(11);
+            doc.setFont('helvetica', 'normal');
+            doc.setTextColor("#343a40"); // Teks Gelap
+            doc.text(`Nama Siswa:`, margin, y);
+            doc.setFont('helvetica', 'bold');
+            doc.text(currentUserData.name, margin + 30, y);
+            y += 7;
+            
+            doc.setFont('helvetica', 'normal');
+            doc.text(`Judul:`, margin, y);
+            doc.setFont('helvetica', 'bold');
+            doc.text(sessionData.title, margin + 30, y);
+            y += 7;
+
+            doc.setFont('helvetica', 'normal');
+            doc.text(`Nilai Akhir:`, margin, y);
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(14);
+            doc.setTextColor("#005a9c"); // <-- DIUBAH: dari var(--primary-color)
+            doc.text(String(score), margin + 30, y);
+            y += 10;
+            
+            doc.setDrawColor("#e9ecef"); // <-- DIUBAH: dari var(--light-gray)
+            doc.line(margin, y, pageWidth - margin, y); // Garis pemisah
+            y += 10;
+
+            // --- Loop Soal dan Jawaban ---
+            sessionData.questions.forEach((q, index) => {
+                const userAnswerIndex = answers[index];
+                const correctAnswerIndex = parseInt(q.correctAnswerIndex);
+                
+                checkPageBreak(20); 
+
+                // Render Teks Pertanyaan
+                doc.setFontSize(11);
+                doc.setFont('helvetica', 'bold');
+                doc.setTextColor("#003366"); // <-- DIUBAH: dari var(--secondary-color)
+                const questionLines = doc.splitTextToSize(`${index + 1}. ${q.questionText}`, contentWidth);
+                doc.text(questionLines, margin, y);
+                y += (questionLines.length * 4.5) + 5; 
+
+                // Render Opsi
+                doc.setFontSize(10);
+                q.options.forEach((optionText, optIndex) => {
+                    const prefix = String.fromCharCode(97 + optIndex);
+                    const optionString = `${prefix}. ${optionText}`;
+                    const optionLines = doc.splitTextToSize(optionString, contentWidth - 5); 
+                    
+                    const rectHeight = (optionLines.length * 4.5) + 6; 
+                    checkPageBreak(rectHeight + 2); 
+
+                    const isCorrect = (optIndex === correctAnswerIndex);
+                    const isUserWrong = (optIndex === userAnswerIndex && userAnswerIndex !== correctAnswerIndex);
+
+                    if (isCorrect) {
+                        doc.setFillColor(224, 247, 236); // #e6f7ec
+                        doc.setDrawColor("#28a745"); // <-- DIUBAH: dari var(--success-color)
+                        doc.setFont('helvetica', 'bold');
+                    } else if (isUserWrong) {
+                        doc.setFillColor(253, 238, 238); // #fdeeee
+                        doc.setDrawColor("#dc3545"); // <-- DIUBAH: dari var(--danger-color)
+                        doc.setFont('helvetica', 'normal');
+                    } else {
+                        doc.setFillColor(253, 253, 253); // #fdfdfd
+                        doc.setDrawColor("#e9ecef"); // <-- DIUBAH: dari var(--light-gray)
+                        doc.setFont('helvetica', 'normal');
+                    }
+                    
+                    doc.rect(margin, y, contentWidth, rectHeight, 'FD'); 
+                    doc.setTextColor("#343a40"); // <-- DIUBAH: dari var(--dark-text)
+                    doc.text(optionLines, margin + 3, y + 5); 
+                    y += rectHeight + 2; 
+                });
+                y += 5; 
+            });
+
+            // --- Halaman Terakhir: Lembar Pengesahan ---
+            doc.addPage();
+            y = margin; 
+            
+            doc.setFontSize(18);
+            doc.setFont('helvetica', 'bold');
+            doc.setTextColor("#003366");
+            doc.text('Lembar Pengesahan', pageWidth / 2, y + 15, { align: 'center' });
+            y += 35;
+            
+            doc.setFontSize(12);
+            doc.setFont('helvetica', 'normal');
+            doc.setTextColor("#343a40");
+            doc.text('Dokumen ini adalah hasil review ujian siswa dan telah diverifikasi', pageWidth / 2, y, { align: 'center' });
+            y += 7;
+            doc.text('secara otomatis oleh sistem Cendekia Aksara.', pageWidth / 2, y, { align: 'center' });
+            y += 14;
+            
+            const today = new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
+            doc.text(`Diverifikasi pada: ${today}`, pageWidth / 2, y, { align: 'center' });
+            y += 20;
+            
+            const capSize = 40;
+            const capX = pageWidth / 2 - (capSize / 2);
+            
+            try {
+                doc.addImage(logoCapBasahUrl, 'PNG', capX, y, capSize, capSize);
+            } catch (e) { console.warn("Gagal memuat cap basah."); }
+            y += capSize; 
+
+            doc.setFont('times', 'italic');
+            doc.setFontSize(26);
+            doc.setTextColor(20, 20, 180); // Biru
+            doc.text('Aksa', pageWidth / 2, y - 10, { align: 'center' }); 
+            y += 10;
+            
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(12);
+            doc.setTextColor("#343a40");
+            doc.text('( Aksa, Kawan Cendekia )', pageWidth / 2, y, { align: 'center' });
+
+            doc.save(`Review_${sessionData.type}_${sessionData.title.replace(/\s+/g, '_')}_${currentUserData.name}.pdf`);
+
+            hideLoading();
+            showModal('Sukses!', 'File PDF (Teks Native) berhasil dibuat dan diunduh.');
+            document.getElementById('download-pdf-btn').disabled = true;
+            document.getElementById('download-pdf-btn').textContent = 'PDF Telah Diunduh';
+            document.getElementById('back-to-dashboard-from-review').classList.remove('hidden');
+
+        } catch (error) {
+            console.error('Gagal membuat PDF Teks Native:', error);
+            hideLoading();
+            showModal('Error', 'Gagal membuat file PDF. Silakan coba lagi.');
+        }
     }
 
 
@@ -1019,6 +1420,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     document.getElementById('ujian-title').value = data.title;
                     document.getElementById('ujian-subject').value = data.subject;
                     document.getElementById('ujian-duration').value = data.duration;
+                    document.getElementById('ujian-deadline').value = data.deadline || ''; // Tambahkan ini
                     tempQuestions = data.questions;
                     updateAddedQuestionsList();
                     document.getElementById('cancel-edit-ujian-btn').classList.remove('hidden');
@@ -1147,6 +1549,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const payload = {
             title: document.getElementById('ujian-title').value, type: type, subject: document.getElementById('ujian-subject').value,
             duration: parseInt(document.getElementById('ujian-duration').value), teacherName: currentUserData.name, questions: tempQuestions,
+            deadline: document.getElementById('ujian-deadline').value || null, // Tambahkan ini
         };
         if(!editId) payload.createdAt = firebase.firestore.FieldValue.serverTimestamp();
         showLoading('Menyimpan...');
@@ -1177,4 +1580,9 @@ document.addEventListener('DOMContentLoaded', () => {
 </script>
 </body>
 </html>
+
+
+
+
+
 
